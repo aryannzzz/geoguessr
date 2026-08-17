@@ -1,0 +1,17 @@
+device: cuda, seed: 42
+train: 17101  val: 1901  num_cells: 147
+epoch  1/12  ( 49.8s)  train_loss=4.1163  val_loss=3.6801  val_haversine_median=2450.3km  val_haversine_mean=5091.4km
+epoch  2/12  ( 49.1s)  train_loss=3.2644  val_loss=3.4867  val_haversine_median=1589.4km  val_haversine_mean=4372.6km
+epoch  3/12  ( 51.2s)  train_loss=2.8976  val_loss=3.4798  val_haversine_median=1534.4km  val_haversine_mean=4293.0km
+epoch  4/12  ( 58.9s)  train_loss=2.6087  val_loss=3.5321  val_haversine_median=1462.2km  val_haversine_mean=4206.1km
+epoch  5/12  ( 53.2s)  train_loss=2.3409  val_loss=3.6116  val_haversine_median=1483.2km  val_haversine_mean=4082.0km
+epoch  6/12  ( 55.2s)  train_loss=2.0799  val_loss=3.7891  val_haversine_median=1514.7km  val_haversine_mean=4289.7km
+epoch  7/12  ( 56.9s)  train_loss=1.8388  val_loss=3.9258  val_haversine_median=1543.3km  val_haversine_mean=4279.6km
+epoch  8/12  ( 58.5s)  train_loss=1.6038  val_loss=4.1468  val_haversine_median=1597.6km  val_haversine_mean=4350.0km
+epoch  9/12  ( 60.1s)  train_loss=1.4004  val_loss=4.3553  val_haversine_median=1593.3km  val_haversine_mean=4321.9km
+epoch 10/12  ( 60.2s)  train_loss=1.2150  val_loss=4.4930  val_haversine_median=1672.1km  val_haversine_mean=4422.6km
+epoch 11/12  ( 64.1s)  train_loss=1.0685  val_loss=4.7045  val_haversine_median=1815.4km  val_haversine_mean=4621.6km
+epoch 12/12  ( 65.1s)  train_loss=0.9633  val_loss=4.7861  val_haversine_median=1844.1km  val_haversine_mean=4553.4km
+
+total training time: 11.4 min, best val haversine median: 1462.2km
+wrote /home/aryannzzz/Downloads/Ajeya/outputs/training/baseline_dinov2s_history.csv and _curves.png
