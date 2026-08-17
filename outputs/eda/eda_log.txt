@@ -1,0 +1,124 @@
+
+==========================================================================================
+1. Lat/Lon distribution
+==========================================================================================
+                lat           lon
+count  19002.000000  19002.000000
+mean      18.753921      2.746910
+std       35.240676     79.308017
+min      -54.893748   -160.555866
+25%      -17.355828    -67.175150
+50%       32.793180     12.236248
+75%       49.481412     53.785642
+max       79.671260    178.249098
+
+Northern hemisphere: 0.636  Southern: 0.364
+Eastern (lon>0): 0.562  Western (lon<=0): 0.438
+Saved world_scatter.png, world_density_hexbin.png
+
+==========================================================================================
+2. Country distribution / imbalance
+==========================================================================================
+Rows with no confident country match (>50km from any boundary polygon): 1804 (9.5%)
+These are likely small islands/atolls not represented in the simplified 298-feature boundary set, or noise-shifted coastal points pushed offshore.
+
+171 distinct countries represented (excluding unmatched).
+
+Top 15 countries by image count:
+iso_country_code
+US    2054
+RU    1891
+BR    1452
+AU    1234
+CA    1129
+AR     982
+ZA     630
+IN     373
+CL     302
+KZ     297
+MN     297
+CN     280
+FR     277
+SE     269
+ES     236
+Name: count, dtype: int64
+
+Bottom 15 countries by image count (rarest, most at risk in geocell design):
+iso_country_code
+MT    1
+CK    1
+IO    1
+VU    1
+TF    1
+SC    1
+MV    1
+BQ    1
+LY    1
+CY    1
+TT    1
+PN    1
+VI    1
+LB    1
+QA    1
+Name: count, dtype: int64
+
+Shannon entropy: 3.612 nats (max possible 5.142 nats for 171 countries) -> normalized evenness = 0.702
+Top-10 countries account for 60.1% of all training images -> STRONG geographic imbalance.
+Saved country_counts_top30.png
+
+==========================================================================================
+3. Image resolution / aspect ratio / file-size stats
+==========================================================================================
+Sampled 3000 / 19002 images
+Width  - min 640, max 640, mean 640.0
+Height - min 640, max 640, mean 640.0
+Aspect ratio - min 1.000, max 1.000, unique values: 1
+Color modes: {'RGB': 3000}
+Distinct (W,H) pairs found: 1 -> [((640, 640), 3000)]
+File size (bytes) - min 8836, max 195031, mean 108706, median 113166
+-> All sampled images share a single fixed resolution: (640, 640). Simplifies preprocessing (no letterboxing/aspect logic needed beyond backbone's expected input size).
+
+==========================================================================================
+4. Duplicate / near-duplicate detection (perceptual hash)
+==========================================================================================
+Hashed 19002 images in 25.0s
+Exact perceptual-hash collisions: 11 groups covering 23 images (0.12%)
+  hash ec9b723885f89178: 2 images ['IMG_00744', 'IMG_09808'], lat spread ~47.7km
+  hash 9f9f85e460607939: 2 images ['IMG_01055', 'IMG_01799'], lat spread ~43.7km
+  hash fcfc47211cdcc303: 2 images ['IMG_02308', 'IMG_05142'], lat spread ~255.8km
+  hash dbe06f0412af9b4c: 2 images ['IMG_03296', 'IMG_14475'], lat spread ~111.4km
+  hash d03aad2b4a5ed515: 2 images ['IMG_04986', 'IMG_09241'], lat spread ~1.0km
+Total unique phashes: 18990 vs 19002 images sampled (99.94% unique)
+
+==========================================================================================
+5. Label-noise signals (dataset is literally named 'noised_dataset')
+==========================================================================================
+Rows with an exactly-repeated (lat,lon) pair: 0 (0.00%) -> low duplicate-coordinate rate suggests per-image continuous noise (e.g. small random jitter) rather than snapping to a coarse grid or repeating exact source coordinates.
+
+Decimal-place distribution (lat):
+lat
+7        25
+8       176
+9      1728
+10    17073
+Name: count, dtype: int64
+-> High average precision (9.9 decimals) is consistent with floating-point noise added programmatically (e.g. lat += np.random.normal(...)) rather than raw GPS EXIF data, which typically has far fewer digits.
+
+iso_country_code null rate as an offshore-noise proxy: 9.49% (see section 2) -- if this dataset were unnoised GPS-tagged street imagery we'd expect this near 0, since street-level photos are taken on land.
+
+Recommendation: quantify per-country/region noise magnitude once external data (e.g. OSV-5M) is available, by comparing this dataset's coordinate distribution to known city/landmark locations visible in a manual image sample. Until then, treat pred targets as noisy and avoid overfitting the regression head to sub-km precision -- calibrate radius accordingly.
+
+==========================================================================================
+6. Candidate geocell scheme
+==========================================================================================
+k=  50  cells: min size=  35  median= 404.0  max=  808  cells<20 imgs=0
+k= 100  cells: min size=  11  median= 195.5  max=  448  cells<20 imgs=2
+k= 200  cells: min size=   5  median=  98.5  max=  252  cells<20 imgs=11
+k= 400  cells: min size=   1  median=  47.0  max=  254  cells<20 imgs=59
+
+Given top-10 countries hold a large majority of images (see section 2) and k-means cell sizes stay reasonably balanced without an explosion of tiny cells up to k~200-400, propose: adaptive k-means over train (lat,lon) with k chosen so min cell count >= ~15-20 images (merge/drop cells below that threshold into their nearest neighbor), rather than fixed-level S2 cells, since S2 at a single level would heavily over/under-partition given the observed density imbalance across countries. Revisit exact k after external data is merged (Phase 2), since it will shift density.
+
+==========================================================================================
+EDA complete
+==========================================================================================
+Plots written to /home/aryannzzz/Downloads/Ajeya/outputs/eda
