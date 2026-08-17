@@ -1,0 +1,23 @@
+run_name: baseline_dinov2s
+seed: 42
+
+backbone_name: vit_small_patch14_dinov2.lvd142m
+img_size: 224
+n_unfrozen_blocks: 2
+
+num_cells: 147           # set by geocell build step, kept here for reference
+offset_scale_km: 500.0   # divides dx_km/dy_km before regression, multiplies back at inference
+
+val_frac: 0.1
+batch_size: 48
+num_workers: 6
+epochs: 12
+lr_backbone: 1.0e-5
+lr_heads: 1.0e-3
+weight_decay: 0.01
+label_smoothing: 0.05
+cls_loss_weight: 1.0
+reg_loss_weight: 1.0
+grad_clip_norm: 1.0
+
+amp: true
