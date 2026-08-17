@@ -1,0 +1,41 @@
+# Pinned for reproducibility on Colab T4 / Kaggle P100-T4 (16GB VRAM).
+# Install with: pip install -r requirements.txt
+# NOTE: torch/torchvision versions below match the CUDA 12.1 wheels commonly
+# preinstalled on Colab/Kaggle images. If the runtime ships a different CUDA
+# version, install torch via the official selector instead of this pin, then
+# `pip install -r requirements.txt --no-deps` for the rest.
+
+torch==2.3.1
+torchvision==0.18.1
+timm==1.0.7
+open_clip_torch==2.24.0
+transformers==4.42.4
+
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.1
+scipy==1.13.1
+
+s2sphere==0.2.5          # S2 geocell indexing
+geopy==2.4.1              # haversine / geodesic utilities
+shapely==2.0.5            # geometry ops for country-boundary bonus
+geopandas==0.14.4         # authoritative country-boundaries GeoJSON handling
+pyproj==3.6.1
+
+matplotlib==3.9.1
+seaborn==0.13.2
+plotly==5.23.0
+folium==0.17.0            # world map plots for EDA
+
+Pillow==10.4.0
+opencv-python-headless==4.10.0.84
+imagehash==4.3.1          # near-duplicate detection in EDA
+
+tqdm==4.66.4
+pyyaml==6.0.1
+albumentations==1.4.12
+
+kaggle==1.6.17             # data download only; NEVER imported at inference time
+
+jupyter==1.0.0
+ipykernel==6.29.5
