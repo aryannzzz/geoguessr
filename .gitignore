@@ -1,8 +1,10 @@
-data/raw/
+# raw images stay local-only (too large / not ours to redistribute) --
+# small reference files directly under data/raw/ (country boundaries,
+# sample submission schema) are NOT excluded and get tracked normally
+data/raw/training_dataset/
+data/raw/test_images_sampled/
 data/external/
-data/processed/
 checkpoints/
-outputs/*.csv
 __pycache__/
 *.pyc
 .ipynb_checkpoints/

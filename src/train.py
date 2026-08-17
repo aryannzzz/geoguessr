@@ -160,16 +160,25 @@ def main(config_path, debug_limit=None):
     ], weight_decay=cfg["weight_decay"])
     scaler = torch.amp.GradScaler(enabled=cfg["amp"] and device.type == "cuda")
 
+    use_cosine = cfg.get("lr_schedule", "constant") == "cosine"
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=cfg["epochs"]) if use_cosine else None
+    patience = cfg.get("patience")  # None disables early stopping
+
     CHECKPOINTS.mkdir(exist_ok=True, parents=True)
     (OUTPUTS / "training").mkdir(exist_ok=True, parents=True)
 
     history = []
     best_val_median = float("inf")
+    epochs_no_improve = 0
+    min_delta = cfg.get("early_stop_min_delta", 1.0)  # km
     t0 = time.time()
     for epoch in range(1, cfg["epochs"] + 1):
         ep_t0 = time.time()
         train_metrics, _ = run_epoch(model, train_loader, optimizer, scaler, cfg, device, cell_table, train=True)
         val_metrics, _ = run_epoch(model, val_loader, optimizer, scaler, cfg, device, cell_table, train=False)
+        if scheduler is not None:
+            scheduler.step()
         ep_time = time.time() - ep_t0
 
         row = {"epoch": epoch, "epoch_time_s": ep_time}
@@ -180,14 +189,22 @@ def main(config_path, debug_limit=None):
         print(f"epoch {epoch:2d}/{cfg['epochs']}  ({ep_time:5.1f}s)  "
               f"train_loss={train_metrics['loss']:.4f}  val_loss={val_metrics['loss']:.4f}  "
               f"val_haversine_median={val_metrics['haversine_median_km']:.1f}km  "
-              f"val_haversine_mean={val_metrics['haversine_mean_km']:.1f}km")
+              f"val_haversine_mean={val_metrics['haversine_mean_km']:.1f}km"
+              + (f"  lr_backbone={scheduler.get_last_lr()[0]:.2e}" if scheduler is not None else ""))
 
         torch.save({"model": model.state_dict(), "cfg": cfg, "epoch": epoch},
                    CHECKPOINTS / f"{cfg['run_name']}_last.pt")
-        if val_metrics["haversine_median_km"] < best_val_median:
+        if val_metrics["haversine_median_km"] < best_val_median - min_delta:
             best_val_median = val_metrics["haversine_median_km"]
+            epochs_no_improve = 0
             torch.save({"model": model.state_dict(), "cfg": cfg, "epoch": epoch},
                        CHECKPOINTS / f"{cfg['run_name']}_best.pt")
+        else:
+            epochs_no_improve += 1
+            if patience is not None and epochs_no_improve >= patience:
+                print(f"\nearly stopping: no val improvement > {min_delta}km for {patience} epochs "
+                      f"(best {best_val_median:.1f}km)")
+                break
 
     total_time = time.time() - t0
     print(f"\ntotal training time: {total_time/60:.1f} min, best val haversine median: {best_val_median:.1f}km")

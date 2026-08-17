@@ -59,21 +59,40 @@ class GeoImageDataset(Dataset):
         stem = image_id[:-4] if image_id.endswith(".jpg") else image_id
         path = IMG_DIR / f"{stem}.jpg"
         im = Image.open(path).convert("RGB")
+        if self.train:
+            im = self._scale_jitter_crop(im)
         if im.size != (self.img_size, self.img_size):
             im = im.resize((self.img_size, self.img_size), Image.BILINEAR)
         return im
+
+    def _scale_jitter_crop(self, im, scale_range=(0.8, 1.0)):
+        # Mild zoom-in jitter: crop a random square sub-region (80-100% of
+        # the source side) before resizing to img_size. Train images are all
+        # 640x640, so cropping square-to-square never distorts aspect ratio
+        # the way the test-time resize bug did. Adds scale/translation
+        # variety without touching orientation (no flip, no rotation), so it
+        # can't corrupt the driving-side/left-right geographic cue.
+        w, h = im.size
+        scale = np.random.uniform(*scale_range)
+        crop_size = int(round(min(w, h) * scale))
+        max_off_x = w - crop_size
+        max_off_y = h - crop_size
+        left = np.random.randint(0, max_off_x + 1) if max_off_x > 0 else 0
+        top = np.random.randint(0, max_off_y + 1) if max_off_y > 0 else 0
+        return im.crop((left, top, left + crop_size, top + crop_size))
 
     def _augment(self, im):
         # No horizontal flip: it destroys a real geographic cue (driving
         # side / left-vs-right-hand traffic correlates with country), so
         # flipping would train against a signal the model should be free to
-        # use. Mild color jitter only -- robustness to lighting/exposure
-        # without touching spatial/geographic content.
+        # use. Color jitter -- robustness to lighting/exposure without
+        # touching spatial/geographic content.
         from PIL import ImageEnhance
         for enhancer_cls, lo, hi in [
-            (ImageEnhance.Brightness, 0.85, 1.15),
-            (ImageEnhance.Contrast, 0.85, 1.15),
-            (ImageEnhance.Color, 0.85, 1.15),
+            (ImageEnhance.Brightness, 0.8, 1.2),
+            (ImageEnhance.Contrast, 0.8, 1.2),
+            (ImageEnhance.Color, 0.8, 1.2),
+            (ImageEnhance.Sharpness, 0.7, 1.3),
         ]:
             factor = np.random.uniform(lo, hi)
             im = enhancer_cls(im).enhance(factor)

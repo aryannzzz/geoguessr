@@ -1,0 +1,23 @@
+{
+  "A": 1.0,
+  "D_km": 1500.0,
+  "w_cal": 0.2,
+  "c_bonus": 0.15,
+  "R_MAX_KM": 20015.0,
+  "a_scale": 0.1850029564340641,
+  "b_offset": 2.405638890169409,
+  "anchor_real_target": 2.50772,
+  "anchor_real_reproduced": 2.50772,
+  "anchor_trivial_target": 2.37907,
+  "anchor_trivial_reproduced": 2.37907,
+  "near_perfect_raw": 1.3479999999999999,
+  "near_perfect_calibrated_score": 2.6550228754425276,
+  "val_n": 1901,
+  "real_median_err_km": 1462.1126525260354,
+  "real_country_match_rate": 0.36507101525512886,
+  "real_radius_hit_rate": 0.7506575486586007,
+  "trivial_median_err_km": 7571.537735693405,
+  "trivial_country_match_rate": 0.0,
+  "trivial_radius_hit_rate": 0.31351920042083115,
+  "trivial_fixed_country": "LY"
+}

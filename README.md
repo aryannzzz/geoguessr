@@ -105,21 +105,54 @@ not a constant or raw regression output.
 
 ```
 data/
-  raw/         # provided competition CSV + images (gitignored, not committed)
+  raw/         # provided competition CSV + images. Only the two small
+               # reference files (country_boundaries.geojson,
+               # sample_submission.csv) are committed; the image
+               # directories (training_dataset/, test_images_sampled/)
+               # are gitignored -- too large, pull them from the
+               # Kaggle-mounted dataset instead (see notebooks/kaggle_train.ipynb)
   external/    # any external datasets, each in its own subdir + LICENSE note
-  processed/   # merged manifests, geocell assignments, splits
-notebooks/     # the single fully-executed deliverable notebook lives here
+  processed/   # merged manifests, geocell assignments, splits -- committed,
+               # small (~4MB), so Kaggle runs don't need to rebuild geocells
+notebooks/
+  geolocation_pipeline.ipynb  # the fully-executed deliverable notebook
+                               # (EDA, abandoned approaches, modeling,
+                               # calibration, inference, bug writeups)
+  kaggle_train.ipynb          # self-contained: clones this repo, locates
+                               # the Kaggle-mounted dataset, builds/loads
+                               # geocells, trains, calibrates, runs
+                               # inference -> submission CSV. Training now
+                               # happens here (Kaggle T4/P100), not locally.
 src/
   data/        # dataset/dataloader, geocell assignment, manifest merging
   models/      # backbone + dual-head architecture, baselines
-  calibration/ # radius calibration (conformal / quantile binning)
   inference/   # offline-only inference script -> submission CSV
+  calibrate.py # radius calibration (confidence-bucketed quantiles)
+  proxy_metric.py # local proxy for the Kaggle scoring formula, fit against
+               # known anchor submissions -- see REPORT.md for methodology
+               # and its documented limitations
 configs/       # yaml configs per run (backbone, geocell scheme, hparams, seed)
-outputs/       # generated submission CSVs, plots, metrics
-checkpoints/   # local model weights bundled for offline inference
+outputs/       # EDA/training/calibration logs, plots, submission CSVs --
+               # committed (small); raw checkpoints are not
+checkpoints/   # local model weights (gitignored -- too large for git;
+               # Kaggle runs write these to /kaggle/working/ for download)
 ```
 
 ## Status
 
-Phase 0 (this scaffold) complete. Phase 1 (data acquisition + EDA) blocked
-on Kaggle competition slug + credentials — see chat for what's needed.
+Phases 0-5 complete locally (scaffold, EDA, geocell/model design, baseline
+training, calibration, offline inference) -- see REPORT.md and
+notebooks/geolocation_pipeline.ipynb for full writeups, results, and a
+critical aspect-ratio preprocessing bug found and fixed post-baseline.
+
+Training moved off local hardware (an RTX 3050 laptop that kept rebooting
+under sustained load) onto Kaggle Notebooks (free T4/P100). Use
+notebooks/kaggle_train.ipynb going forward for anything training-related;
+local `src/train.py` still works for quick smoke tests but is no longer
+the primary training path. A resolution/capacity investigation (this
+session) found DINOv2-small's native 518px resolution outperforms the
+224px baseline at every tested checkpoint (224 -> 336 -> 448 -> 518, each
+step better, diminishing returns after ~448px) -- the Kaggle notebook
+picks up that investigation with a full run at 448px + more unfrozen
+backbone blocks + regularization, parameterized at the top of the notebook
+so resolution/unfrozen-blocks/epochs are easy to change.
