@@ -36,7 +36,17 @@ OUTPUTS = ROOT / "outputs"
 
 
 class TestImageDataset(Dataset):
-    """Unlabeled test images, same preprocessing as val (no augmentation)."""
+    """Unlabeled test images, same preprocessing as val (no augmentation).
+
+    Train/val images are all pre-cropped to 640x640 square, so a plain
+    resize-to-square never distorts them. Test images are NOT square (500/500
+    sampled are e.g. 647x486 or up to 1200x486 -- wide dashcam/street-view
+    frames) -- a plain resize-to-square would squash them non-uniformly
+    (up to ~2.5x more horizontal than vertical compression for the widest
+    ones), warping every visual cue the model was trained on. Instead we
+    resize the short side to img_size and center-crop the square out, which
+    matches the square framing convention train/val images already have.
+    """
 
     def __init__(self, image_ids, img_dir, img_size=224):
         self.image_ids = list(image_ids)
@@ -48,11 +58,22 @@ class TestImageDataset(Dataset):
     def __len__(self):
         return len(self.image_ids)
 
+    def _resize_and_center_crop(self, im):
+        w, h = im.size
+        if (w, h) == (self.img_size, self.img_size):
+            return im
+        short = min(w, h)
+        scale = self.img_size / short
+        new_w, new_h = round(w * scale), round(h * scale)
+        im = im.resize((new_w, new_h), Image.BILINEAR)
+        left = (new_w - self.img_size) // 2
+        top = (new_h - self.img_size) // 2
+        return im.crop((left, top, left + self.img_size, top + self.img_size))
+
     def __getitem__(self, idx):
         image_id = self.image_ids[idx]
         im = Image.open(self.img_dir / image_id).convert("RGB")
-        if im.size != (self.img_size, self.img_size):
-            im = im.resize((self.img_size, self.img_size), Image.BILINEAR)
+        im = self._resize_and_center_crop(im)
         arr = torch.from_numpy(np.asarray(im, dtype=np.float32).transpose(2, 0, 1) / 255.0)
         arr = (arr - self.mean) / self.std
         return arr, image_id
