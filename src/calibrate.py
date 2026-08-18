@@ -10,21 +10,28 @@ global radius. This lets validation residuals (which already contain the
 label noise found in EDA) set the radius directly instead of modeling that
 noise separately.
 
-quantile=0.5 (down from an earlier 0.75), n_bins=10 (up from 6): a real
-Kaggle submission showed the wider/coarser settings pushed the *median*
-claimed radius to ~5,530km -- the competition's country bonus requires a
-"reasonably tight" radius (see README/problem statement), and the
-calibration term's reward also shrinks as radius widens, so a wide median
-radius forfeits both on the majority of predictions (scoring is
-median-based) regardless of how accurate the underlying point is. Setting
-radius = the *median* (not p75) error per bucket pairs naturally with the
-competition's own median-based scoring: on the accurate half of a bucket
-you're tight-and-correct, on the inaccurate half you're tight-and-wrong --
-a deliberate, informed risk trade rather than defaulting to "wide and
-safe." More bins gives finer confidence resolution so genuinely confident
-predictions aren't lumped in with mediocre ones.
+Two real Kaggle submissions bracket this so far -- take both as evidence,
+not just the first:
+  - quantile=0.75, n_bins=6 (median claimed radius ~5,530km): score 5.14
+  - quantile=0.5,  n_bins=10 (radius = median error per bucket, so ~50% of
+    each bucket's own val examples exceed their assigned radius by
+    construction): score 4.04, on a *better* underlying model (val
+    Haversine median 901km vs the first submission's 967km)
+The score dropped despite the model improving. The problem statement is
+explicit that a tight-but-wrong radius is penalized *more* than a
+wide-but-wrong one ("confidently wrong is worse than honestly unsure") --
+halving the quantile roughly doubled the tight-miss rate across the val
+set, and that asymmetric penalty apparently outweighed the extra
+calibration reward + country-bonus eligibility gained on the correct half.
+So: quantile=0.75 empirically beat quantile=0.5, but that comparison is
+still confounded by the model change, and quantile=0.75 itself is
+*better-than-0.5*, not *proven-optimal* -- treat further tuning here as
+genuinely uncertain, worth validating with one clean same-model A/B before
+trusting it further, not another guess. n_bins=10 is kept (more bins is
+just finer confidence resolution, not a tight-vs-wide tradeoff, and
+nothing in the data implicates it).
 
-Run: python3 src/calibrate.py [--config configs/baseline.yaml] [--quantile 0.5] [--n-bins 10]
+Run: python3 src/calibrate.py [--config configs/baseline.yaml] [--quantile 0.75] [--n-bins 10]
 """
 import argparse
 import json
@@ -54,7 +61,7 @@ CHECKPOINTS = ROOT / "checkpoints"
 OUTPUTS = ROOT / "outputs"
 
 
-def main(config_path, quantile=0.5, n_bins=10):
+def main(config_path, quantile=0.75, n_bins=10):
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
@@ -152,7 +159,7 @@ def main(config_path, quantile=0.5, n_bins=10):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(ROOT / "configs" / "baseline.yaml"))
-    parser.add_argument("--quantile", type=float, default=0.5)
+    parser.add_argument("--quantile", type=float, default=0.75)
     parser.add_argument("--n-bins", type=int, default=10)
     args = parser.parse_args()
     main(args.config, quantile=args.quantile, n_bins=args.n_bins)

@@ -186,7 +186,15 @@ def main(config_path, debug_limit=None):
         ep_t0 = time.time()
         train_metrics, _ = run_epoch(model, train_loader, optimizer, scaler, cfg, device, cell_table, train=True)
         val_metrics, _ = run_epoch(model, val_loader, optimizer, scaler, cfg, device, cell_table, train=False)
-        if scheduler is not None:
+        # CosineAnnealingLR is periodic: stepping it past T_max doesn't hold
+        # the LR at its floor, it continues the cosine curve back upward
+        # (e.g. T_max=8, by epoch 12 the LR is back to 50% of its starting
+        # value). Since early stopping (patience, below) routinely runs
+        # several epochs past T_max before it fires, stop stepping the
+        # scheduler once T_max is reached so the LR pins at its floor
+        # instead of re-inflating and undoing the fine-convergence phase it
+        # was supposed to provide.
+        if scheduler is not None and epoch <= t_max:
             scheduler.step()
         ep_time = time.time() - ep_t0
 
