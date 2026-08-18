@@ -10,7 +10,21 @@ global radius. This lets validation residuals (which already contain the
 label noise found in EDA) set the radius directly instead of modeling that
 noise separately.
 
-Run: python3 src/calibrate.py [--config configs/baseline.yaml] [--quantile 0.75] [--n-bins 6]
+quantile=0.5 (down from an earlier 0.75), n_bins=10 (up from 6): a real
+Kaggle submission showed the wider/coarser settings pushed the *median*
+claimed radius to ~5,530km -- the competition's country bonus requires a
+"reasonably tight" radius (see README/problem statement), and the
+calibration term's reward also shrinks as radius widens, so a wide median
+radius forfeits both on the majority of predictions (scoring is
+median-based) regardless of how accurate the underlying point is. Setting
+radius = the *median* (not p75) error per bucket pairs naturally with the
+competition's own median-based scoring: on the accurate half of a bucket
+you're tight-and-correct, on the inaccurate half you're tight-and-wrong --
+a deliberate, informed risk trade rather than defaulting to "wide and
+safe." More bins gives finer confidence resolution so genuinely confident
+predictions aren't lumped in with mediocre ones.
+
+Run: python3 src/calibrate.py [--config configs/baseline.yaml] [--quantile 0.5] [--n-bins 10]
 """
 import argparse
 import json
@@ -40,7 +54,7 @@ CHECKPOINTS = ROOT / "checkpoints"
 OUTPUTS = ROOT / "outputs"
 
 
-def main(config_path, quantile=0.75, n_bins=6):
+def main(config_path, quantile=0.5, n_bins=10):
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
@@ -138,7 +152,7 @@ def main(config_path, quantile=0.75, n_bins=6):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(ROOT / "configs" / "baseline.yaml"))
-    parser.add_argument("--quantile", type=float, default=0.75)
-    parser.add_argument("--n-bins", type=int, default=6)
+    parser.add_argument("--quantile", type=float, default=0.5)
+    parser.add_argument("--n-bins", type=int, default=10)
     args = parser.parse_args()
     main(args.config, quantile=args.quantile, n_bins=args.n_bins)

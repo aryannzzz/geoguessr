@@ -161,8 +161,17 @@ def main(config_path, debug_limit=None):
     scaler = torch.amp.GradScaler(enabled=cfg["amp"] and device.type == "cuda")
 
     use_cosine = cfg.get("lr_schedule", "constant") == "cosine"
+    # T_max defaults to the hard epoch cap, but early stopping usually fires
+    # well before that -- e.g. patience=4 tripped at epoch 7 of a T_max=16
+    # schedule, so the LR was still ~60% of its starting value when training
+    # stopped and never reached the low-LR fine-convergence phase cosine
+    # annealing is supposed to provide. Set lr_schedule_t_max explicitly to
+    # the epoch count you actually expect training to run (based on where
+    # val error has historically started degrading), separate from the
+    # epochs/patience safety cap.
+    t_max = cfg.get("lr_schedule_t_max", cfg["epochs"])
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=cfg["epochs"]) if use_cosine else None
+        optimizer, T_max=t_max) if use_cosine else None
     patience = cfg.get("patience")  # None disables early stopping
 
     CHECKPOINTS.mkdir(exist_ok=True, parents=True)
