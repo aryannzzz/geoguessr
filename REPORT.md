@@ -314,16 +314,133 @@ data) will do to the real Kaggle score. Because of this, the decision of
 whether a large change is worth spending a Kaggle submission on is being
 driven by real validation Haversine trends, not the proxy score.
 
-## 8. Status / next steps
+## 8. Full retrain: moving to Kaggle, resolution decision, capacity increase
 
-A full retrain is in progress at report-authoring time, combining:
-resolution pushed toward DINOv2's native 518px (pending the 448px/518px
-monotonicity check above), unfreezing more backbone blocks (low backbone
-LR, higher head LR), stronger regularization (weight decay, the
-scale-jitter crop augmentation and wider color jitter already in
-`src/data/dataset.py`), a cosine LR schedule, and early stopping on a real
-validation plateau rather than a hardcoded epoch count (`src/train.py`) —
-keeping the no-horizontal-flip rule throughout. **This section is a
-placeholder**: results, the resolution decision, and a follow-up Kaggle
-submission are pending as of this writing and will be appended once the
-retrain and validation are complete, ahead of the Aug 19 EOD deadline.
+Local training (RTX 3050 laptop, 6GB) was abandoned mid-session: the
+machine suffered **repeated full OS reboots** under sustained training
+load (confirmed via `uptime -s` showing a new boot time each time,
+killing the training process with no error trace of its own). All
+training moved to Kaggle Notebooks (free T4/P100) via a new
+self-contained notebook, `notebooks/kaggle_train.ipynb`, which clones this
+repo, auto-locates the competition's Kaggle-mounted dataset by matching
+filenames (no hardcoded dataset path), and runs the same `src/` code
+unmodified.
+
+**Resolution**: matched short (3-5 epoch) local tests at 224/336/448/518px
+(same architecture, same hyperparameters, only resolution varied) each
+beat the previous at every matched epoch, with sharply diminishing
+returns past ~336-448px (336 over 224: -22% val median; 448 over 336:
+-3.4%; 518 over 448: -2.4%, at ~25% more time/epoch). **448px** was chosen
+for the full retrain as the cost/benefit pick.
+
+**Capacity**: unfroze 6 of 12 DINOv2-small blocks (up from the baseline's
+2), weight_decay 0.01 -> 0.03, added a scale-jitter crop + wider color
+jitter augmentation (still no horizontal flip), cosine LR schedule with
+early stopping (patience=4) instead of a hardcoded epoch count.
+
+**Two real bugs found and fixed in this phase** (both in `src/train.py`,
+both caught by inspecting real Kaggle training logs, not anticipated in
+advance):
+1. Cosine schedule horizon (`T_max`) defaulted to the hard epoch cap
+   (16), but early stopping routinely fired ~7-8 epochs in — the LR was
+   still ~60% of its starting value when training stopped, never reaching
+   the low-LR fine-convergence phase cosine annealing is supposed to
+   provide. Fixed by adding a separate `lr_schedule_t_max` config key,
+   set to 8 (near where val error had empirically started degrading).
+2. `CosineAnnealingLR` is periodic: naively stepping it past `T_max`
+   doesn't hold the LR at its floor, it continues the cosine curve back
+   *upward* (verified: by epoch 12 with `T_max=8`, LR was back to 50% of
+   its starting value). Early stopping's patience window runs several
+   epochs past `T_max` before firing, so training was silently undoing
+   its own fine-convergence phase. Fixed by only stepping the scheduler
+   while `epoch <= t_max`, pinning the LR at its floor afterward --
+   verified in a later run where epochs 8-12 produced byte-identical
+   validation metrics (LR pinned at exactly 0, no further learning, as
+   intended once converged).
+
+With both fixes, two independent retrains from scratch (same config,
+same seed) converged to essentially the same result: **best val Haversine
+median ~901-906km at epoch 8** -- consistent and reproducible, a real
+~38% relative improvement over the 224px/2-block baseline's 1462km.
+
+## 9. Calibration quantile/bin-count: three real anchors, and a lesson in not over-trusting a hypothesis
+
+With the model itself validated as solid and reproducible, three real
+Kaggle submissions were made varying only the radius-calibration recipe
+(`src/calibrate.py`) on top of models in the same ~900-970km val-median
+range:
+
+| Run | Model val median | quantile | n_bins | Kaggle score |
+|---|---|---|---|---|
+| A | 967.6km (T_max bug present, old plain cosine) | 0.75 | 6 | **5.14** |
+| B | 901.3km | 0.50 | 10 | 4.04 |
+| C | 906.0km | 0.75 | 10 | 4.87 |
+
+For reference: trivial centroid baseline scored 2.37907; the 224px/2-block
+baseline (post aspect-ratio fix) scored 2.50772.
+
+**A -> B**: quantile dropped 0.75 -> 0.5 (radius = median error per bucket
+instead of the 75th percentile), on a *better* model. Score dropped
+5.14 -> 4.04 despite the model improving. Diagnosis: setting radius to
+the bucket median means ~50% of that bucket's own validation examples
+exceed their assigned radius by construction (vs ~25% at quantile 0.75).
+The problem statement is explicit that a tight-but-wrong radius is
+penalized *more* than a wide-but-wrong one -- halving the quantile roughly
+doubled the tight-miss rate, and that asymmetric penalty apparently
+outweighed the extra calibration reward + country-bonus eligibility
+gained on the correct half.
+
+**B -> C**: quantile reverted 0.5 -> 0.75 (n_bins still 10, model
+unchanged within noise). Score recovered partially, 4.04 -> 4.87 --
+confirming the *direction* of the quantile diagnosis was right.
+
+**But C (4.87) still underperforms A (5.14)**, despite A having the
+*worse* model and the *old, buggy* LR schedule. With quantile now matched
+between A and C, the only remaining deliberate difference is `n_bins`
+(6 vs 10) -- an unvalidated change made at the same time as the quantile
+change, on the untested assumption that "more bins = finer resolution =
+strictly better." Inspecting run C's calibration table shows this
+assumption was likely wrong: with only ~190 validation examples per
+bucket (vs ~317 at 6 bins), the 75th-percentile estimate is noisy,
+especially in the tails. The ratio of each bucket's assigned radius to
+its own median error -- which should move smoothly with confidence if the
+quantile estimate is stable -- instead swings erratically bucket to
+bucket: 1.65x, 3.16x, 4.03x, **4.92x**, then drops back to 3.18x, 3.64x,
+2.93x, 2.18x, 2.09x, 1.67x. That's small-sample noise in the calibration
+step itself, not signal -- a real bucket landing at an unluckily-wide
+radius purely from having too few examples to estimate its 75th
+percentile stably.
+
+**Takeaway, stated plainly**: two calibration hypotheses were tried in a
+row (tighter-is-better, then more-bins-is-better) and both were wrong, or
+at least net-negative, despite each having a plausible-sounding rationale
+going in. The empirically best real setting found across all three
+Kaggle anchors remains **quantile=0.75, n_bins=6** -- run A's exact
+original recipe, now paired with the improved (~906km) model. Given the
+Aug 19 EOD deadline left no further submission budget to keep testing
+one variable at a time, that recipe was locked in as the final
+calibration choice.
+
+## 10. Final state at submission time
+
+- Final model: `kaggle_448_deep` -- DINOv2-small, 448px, 6/12 blocks
+  unfrozen, weight_decay=0.03, cosine LR (T_max=8, correctly pinned),
+  early stopping patience=4. Best val Haversine median: ~901-906km
+  (epoch 8), reproduced across two independent training runs.
+- Final calibration: quantile=0.75, n_bins=6 (`src/calibrate.py`
+  defaults) -- the empirically best-scoring recipe across three real
+  Kaggle anchors (5.14 vs 4.04 vs 4.87), chosen over two plausible-seeming
+  but empirically-refuted alternatives (see Section 9).
+- Best real Kaggle score obtained this session: **5.14** (up from the
+  224px baseline's 2.50772, and the trivial centroid's 2.37907).
+- Known open gap: reported scores of ~50 for other teams remain
+  ~10x above what was achieved here. The evidence in Section 9 suggests
+  the classifier's confidence is not concentrated near 1.0 for most test
+  images even on the improved model (e.g. run C's own bucket 4, the
+  *middle* of 10 confidence bins, still had a 1091km median validation
+  error) -- meaning most of the remaining gap is a genuine model
+  capacity/discrimination problem, not a calibration-tuning problem no
+  matter how it's sliced. Time did not allow addressing this further
+  (more unfrozen capacity, external data for underrepresented regions,
+  or a coarse-to-fine geocell hierarchy were all identified earlier as
+  candidate next steps but not attempted) before the deadline.
